@@ -1,0 +1,27 @@
+{
+  "type": "module",
+  "name": "tbot",
+  "version": "1.0.0",
+  "description": "My first bot for Telegram",
+  "main": "bot.js",
+  "scripts": {
+    "test": "no"
+  },
+  "keywords": [
+    "telegram"
+  ],
+  "author": "Entyen",
+  "license": "ISC",
+  "dependencies": {
+    "telegraf": "^4.3.0"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/entyen/tbot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/entyen/tbot/issues"
+  },
+  "homepage": "https://github.com/entyen/tbot#readme"
+}
