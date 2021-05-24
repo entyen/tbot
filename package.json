@@ -1,5 +1,4 @@
 {
-  "type": "module",
   "name": "tbot",
   "version": "1.0.0",
   "description": "My first bot for Telegram",
