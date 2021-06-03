@@ -1,9 +1,23 @@
 const { Telegraf } = require('telegraf')
+const mongoose = require('mongoose')
+
+
+const server = '127.0.0.1:27017'
+const database = 'tbot'
+const userSchem = new mongoose.Schema({ userid: Number, username: String })
+
 const fs = require('fs')
 const tea = JSON.parse(fs.readFileSync('config.json', 'utf-8'))
 
 const bot = new Telegraf(tea.TOKEN)
-bot.start((ctx) => ctx.reply('Welcome'))
+bot.start(async (ctx) => {
+  ctx.reply(`Welcome ${ctx.message.from.username}`)
+  const userm = mongoose.model('users', userSchem)
+  let user = await userm.findOne({ username: ctx.message.from.username })
+  if (!user){
+      user = await userm.create({ userid: ctx.message.from.id, username: ctx.message.from.username })  
+    }
+})
 bot.help((ctx) => ctx.reply('Send me a sticker'))
 bot.on('sticker', (ctx) => ctx.reply(ctx.message.sticker.emoji))
 bot.hears('hi', (ctx) => ctx.reply('Hey there'))
@@ -42,6 +56,17 @@ bot.on('message',
     ) 
   })
 
+//DataBase
+mongoose.connect(`mongodb://${server}/${database}`, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    useFindAndModify: false,
+    useCreateIndex: true
+}).then(() => {
+    console.log('MongoDB connected!!');
+}).catch(err => {
+    console.log('Failed to connect to MongoDB', err);
+});
 
 // Enable graceful stop
 //process.once('SIGINT', () => bot.stop('SIGINT'))
