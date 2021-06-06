@@ -12,7 +12,9 @@
   "author": "Entyen",
   "license": "ISC",
   "dependencies": {
+    "bluebird": "^3.5.1",
     "mongoose": "^5.12.11",
+    "node-cron": "^3.0.0",
     "telegraf": "^4.3.0"
   },
   "repository": {

@@ -1,5 +1,7 @@
 const { Telegraf } = require('telegraf')
 const mongoose = require('mongoose')
+const Promise = require("bluebird")
+const cron = require('node-cron')
 
 
 const server = '127.0.0.1:27017'
@@ -37,23 +39,44 @@ bot.command('td', (ctx) => {
       }
 })
 
+bot.command('gta', (ctx) => {
+  ctx.telegram.sendMessage(ctx.chat.id, 'Text here',
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{text: 'Start', callback_data: 'ST'}],
+          [{text: 'Close', callback_data: 'CE'}]
+        ]
+      }
+    }
+  )
+})
+
+bot.action('ST', (ctx) => {
+  ctx.deleteMessage()
+  cron.schedule('4 * * * *', () => {
+    ctx.telegram.sendMessage(ctx.chat.id, 'After 4min')
+  })
+})
+
 bot.on('message',
   function (ctx) {
     const ctm = ctx.message
     const wt = fs.createWriteStream('./tbot.log', {flags: 'a'})
     wt.write(JSON.stringify(ctm) + '\n')
 
-    ctx.reply(
-      `Message id: ${ctm.message_id}
-      ID: ${ctm.from.id}
-      Name: ${ctm.from.first_name}
-      User Name: ${ctm.from.username}
-      Language: ${ctm.from.language_code}
-      Bot: ${ctm.from.is_bot}
-      Date: ${ctm.date}
-      Text: ${ctm.text}
-      Type: ${ctm.chat.type}`
-    ) 
+//   ctx.reply(
+//     `Message id: ${ctm.message_id}
+//     ID: ${ctm.from.id}
+//     Name: ${ctm.from.first_name}
+//     User Name: ${ctm.from.username}
+//     Language: ${ctm.from.language_code}
+//     Bot: ${ctm.from.is_bot}
+//     Date: ${ctm.date}
+//     Text: ${ctm.text}
+//     Type: ${ctm.chat.type}
+//     Session ID: ${ctx.session}`
+//   )
   })
 
 //DataBase
