@@ -1,10 +1,11 @@
 {
   "name": "tbot",
-  "version": "1.0.0",
-  "description": "My first bot for Telegram",
+  "version": "0.1.0",
+  "description": "Telegram Bot",
   "main": "bot.js",
   "scripts": {
-    "test": "no"
+    "test": "no",
+    "dev": "nodemon bot.js"
   },
   "keywords": [
     "telegram"
@@ -12,10 +13,13 @@
   "author": "Entyen",
   "license": "ISC",
   "dependencies": {
+    "@grammyjs/menu": "^1.0.4",
+    "axios": "^0.25.0",
     "bluebird": "^3.5.1",
+    "grammy": "^1.6.1",
     "mongoose": "^5.12.11",
     "node-cron": "^3.0.0",
-    "telegraf": "^4.3.0"
+    "qiwi-sdk": "^2.2.0"
   },
   "repository": {
     "type": "git",
@@ -24,5 +28,8 @@
   "bugs": {
     "url": "https://github.com/entyen/tbot/issues"
   },
-  "homepage": "https://github.com/entyen/tbot#readme"
+  "homepage": "https://github.com/entyen/tbot#readme",
+  "devDependencies": {
+    "nodemon": "^2.0.15"
+  }
 }
