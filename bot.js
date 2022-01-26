@@ -30,6 +30,7 @@ function initial() {
     ins_likes: 0,
     ins_viewers: 0,
     ins_folowers: 0,
+    coupon: 0,
   }
 }
 
@@ -52,9 +53,9 @@ const prof_menu = new InlineKeyboard()
   .text(lang.pur_his, "in_dev")
   .row()
   .text(lang.up_bal, "up_bal")
-  .text(lang.bal_his, "in_dev")
+  .text(lang.bal_his, "bal_his")
   .row()
-  .text(lang.act_cup, "in_dev")
+  .text(lang.act_cup, "coupon")
 
 const shop_wrap = new InlineKeyboard()
   .text(lang.vk, "vk_nakrutka")
@@ -117,14 +118,32 @@ bot.command("start", async (ctx) => {
       lang: cmf.language_code,
       refer_id: ctx.match,
     })
+    if (ctx.match) {
+      const referUser = await userdb.findOne({ id: ctx.match })
+      referUser.refer.unshift({ userid: uid })
+      referUser.save()
+    }
     await ctx.reply(`Добро пожаловать ${cmf.username || ""}`, {
       reply_markup: keyboard,
     })
+    await bot.api.sendMessage(
+      -463135822,
+      `👤 Зарегистрирован новый пользователь: <a href="tg://user?id=${
+        cmf.id
+      }">${cmf.username || "Без Имени"}</a>\n🕺 Реферал: ${ctx.match || "Нет"}`,
+      { parse_mode: "HTML" }
+    )
   } else {
     await ctx.reply("Спасибо, что решили воспользоваться нашим сервисом", {
       reply_markup: keyboard,
     })
   }
+})
+
+bot.callbackQuery("coupon", async (ctx) => {
+  ctx.editMessageText("Отправьте купон")
+  const session = ctx.session
+  session.coupon++
 })
 
 bot.callbackQuery("up_bal", async (ctx) => {
@@ -147,13 +166,13 @@ async function checkPayments(ctx, trasid) {
   const transactions = data.filter((txn) => txn.comment == commentID)
   const transaction = transactions[0]
 
-  if (trans.status === "Cancel")
-    return ctx.answerCallbackQuery({
-      text: `Заказ отменен`,
-    })
   if (trans.status === "Complite")
     return ctx.answerCallbackQuery({
       text: `Нельзя два раза начислить за одну покупку`,
+    })
+  if (trans.status === "Cancel")
+    return ctx.answerCallbackQuery({
+      text: `Заказ отменен`,
     })
   if (transaction === undefined) {
     ctx.answerCallbackQuery({ text: `Пополнение №${commentID} не найденно` })
@@ -166,7 +185,9 @@ async function checkPayments(ctx, trasid) {
     await trans.save()
     if (refer) {
       refer.bal = refer.bal + trans.balUp * 0.05
-      refer.save()
+      const refBal = refer.refer.filter(x => x.userid == user.id)[0]
+      refBal.gainrur = refBal.gainrur + trans.balUp * 0.05
+      await refer.save()
     }
     await bot.api.sendMessage(
       -463135822,
@@ -180,22 +201,49 @@ async function checkPayments(ctx, trasid) {
   }
 }
 
+bot.callbackQuery("bal_his", async (ctx) => {
+  const cmt = +ctx.update.callback_query.message.text
+    .split(" ")[2]
+    .match(/[0-9]/g)
+    .join("")
+  ctx.answerCallbackQuery({ text: "" })
+  let balinfo = await balHisdb.find({ id: cmt })
+  let result = `Всего у Вас пополнений:\n`
+  balinfo = balinfo.filter((x) => x.status == "Complite")
+  for (i = 0; i < balinfo.length; i++) {
+    result += `• ══─━━── ⫷⫸ ──══─━━ •\nПополнение: #${balinfo[i].bid}\nСумма: ${
+      balinfo[i].balUp
+    } ₽\nДата Пополнения: ${balinfo[i].reqDate.toLocaleString("ru-RU")}\n`
+  }
+  result += `• ══─━━── ⫷⫸ ──══─━━ •`
+  ctx.editMessageText(result)
+})
+
 bot.callbackQuery("check_paym_v", async (ctx) => {
-  const cmt = ctx.update.callback_query.message.text.split(" ")[2]
+  const cmt = +ctx.update.callback_query.message.text
+    .split(" ")[2]
+    .match(/[0-9]/g)
+    .join("")
   checkPayments(ctx, cmt)
 })
 
 bot.callbackQuery("check_paym_x", async (ctx) => {
-  const cmt = ctx.update.callback_query.message.text.split(" ")[2]
+  const cmt = +ctx.update.callback_query.message.text
+    .split(" ")[2]
+    .match(/[0-9]/g)
+    .join("")
   let trans = await balHisdb.findOne({ bid: cmt })
   trans.status = "Cancel"
   trans.save()
   ctx.answerCallbackQuery({ text: "" })
-  ctx.editMessageText("Отмена пополнения")
+  ctx.editMessageText(`Отмена пополнения №${trans.bid}`)
 })
 
 bot.callbackQuery("in_dev", async (ctx) => {
-  const cmt = ctx.update.callback_query.message.text.split(" ")[2]
+  const cmt = +ctx.update.callback_query.message.text
+    .split(" ")[2]
+    .match(/[0-9]/g)
+    .join("")
   ctx.answerCallbackQuery({ text: "В разработке" })
 })
 
@@ -214,7 +262,9 @@ bot.callbackQuery("tg_nakrutka", async (ctx) => {
 bot.callbackQuery("tg_viewers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры Tg\n💰 Цена: ${0.01 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 50 шт.\n Максимальное количество: 1000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры Tg\n💰 Цена: ${
+      0.01 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 50 шт.\n Максимальное количество: 1000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.tg_viewers++
@@ -223,7 +273,9 @@ bot.callbackQuery("tg_viewers", async (ctx) => {
 bot.callbackQuery("tg_folowers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики Tg\n💰 Цена: ${0.04 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 500 шт.\n Максимальное количество: 10000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики Tg\n💰 Цена: ${
+      0.04 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 500 шт.\n Максимальное количество: 10000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.tg_folowers++
@@ -244,7 +296,9 @@ bot.callbackQuery("ins_nakrutka", async (ctx) => {
 bot.callbackQuery("ins_likes", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки Inst\n💰 Цена: ${0.01 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 15000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки Inst\n💰 Цена: ${
+      0.01 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 15000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.ins_likes++
@@ -253,7 +307,9 @@ bot.callbackQuery("ins_likes", async (ctx) => {
 bot.callbackQuery("ins_viewers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры Inst\n💰 Цена: ${0.01 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 100 шт.\n Максимальное количество: 1000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры Inst\n💰 Цена: ${
+      0.01 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 100 шт.\n Максимальное количество: 1000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.ins_viewers++
@@ -262,7 +318,9 @@ bot.callbackQuery("ins_viewers", async (ctx) => {
 bot.callbackQuery("ins_folowers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики Inst\n💰 Цена: ${0.01 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 50000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики Inst\n💰 Цена: ${
+      0.01 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 50000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.ins_folowers++
@@ -283,7 +341,9 @@ bot.callbackQuery("tt_nakrutka", async (ctx) => {
 bot.callbackQuery("tt_likes", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки TT\n💰 Цена: ${0.06 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 100000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки TT\n💰 Цена: ${
+      0.06 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 100000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.tt_likes++
@@ -292,7 +352,9 @@ bot.callbackQuery("tt_likes", async (ctx) => {
 bot.callbackQuery("tt_viewers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры TT\n💰 Цена: ${0.01 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 1000 шт.\n Максимальное количество: 1000000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры TT\n💰 Цена: ${
+      0.01 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 1000 шт.\n Максимальное количество: 1000000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.tt_viewers++
@@ -301,7 +363,9 @@ bot.callbackQuery("tt_viewers", async (ctx) => {
 bot.callbackQuery("tt_folowers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики TT\n💰 Цена: ${0.03 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 100000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики TT\n💰 Цена: ${
+      0.03 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 100000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.tt_folowers++
@@ -310,7 +374,9 @@ bot.callbackQuery("tt_folowers", async (ctx) => {
 bot.callbackQuery("tt_comments", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  💬 Комментарии TT\n💰 Цена: ${0.5 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 1000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  💬 Комментарии TT\n💰 Цена: ${
+      0.5 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 1000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.tt_comments++
@@ -331,7 +397,9 @@ bot.callbackQuery("vk_nakrutka", async (ctx) => {
 bot.callbackQuery("vk_likes", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки VK\n💰 Цена: ${0.06 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 35000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки VK\n💰 Цена: ${
+      0.06 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 35000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.vk_likes++
@@ -340,7 +408,9 @@ bot.callbackQuery("vk_likes", async (ctx) => {
 bot.callbackQuery("vk_viewers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры VK\n💰 Цена: ${0.04 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 50 шт.\n Максимальное количество: 500000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры VK\n💰 Цена: ${
+      0.04 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 50 шт.\n Максимальное количество: 500000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.vk_viewers++
@@ -349,7 +419,9 @@ bot.callbackQuery("vk_viewers", async (ctx) => {
 bot.callbackQuery("vk_folowers", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики VK\n💰 Цена: ${0.09 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 35000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики VK\n💰 Цена: ${
+      0.09 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 35000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.vk_folowers++
@@ -358,7 +430,9 @@ bot.callbackQuery("vk_folowers", async (ctx) => {
 bot.callbackQuery("vk_repost", async (ctx) => {
   await ctx.deleteMessage()
   await ctx.reply(
-    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  🔃Репосты VK\n💰 Цена: ${0.08 * priceX} ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 35000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  🔃Репосты VK\n💰 Цена: ${
+      0.08 * priceX
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 10 шт.\n Максимальное количество: 35000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
   )
   const session = ctx.session
   session.vk_folowers++
@@ -376,7 +450,16 @@ bot.callbackQuery("close", async (ctx) => {
 const nakrutka = async (snum, price, sev, ctx) => {
   const cmt = ctx.message.text
   const session = ctx.session
+  ctx.user = await userdb.findOne({ userid: ctx.message.from.id })
   if (session[sev] > 1) {
+    const urlR =
+      /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/
+    const urlCheck = ctx.message.text.match(urlR)
+    if (!urlCheck) {
+      ctx.reply("Неверный формат ссылки")
+      session[sev] = 0
+      return
+    }
     const rq = await axios.request(
       lang.vk_folow_url
         .replace(/(?<=<).+(?=>)/gm, `$&`)
@@ -386,7 +469,7 @@ const nakrutka = async (snum, price, sev, ctx) => {
         .replaceAll(/<|>/g, "")
     )
     if (!rq.data.order) {
-      ctx.reply(`Ошибка ${rq.data.Error}`)
+      ctx.reply(`Ошибка: ${rq.data.Error}`)
       session[sev] = 0
       return
     }
@@ -405,6 +488,11 @@ const nakrutka = async (snum, price, sev, ctx) => {
     }
     if (Number(cmt)) {
       const cmp = Number(cmt)
+      if ((cmp > 500000) | (cmp < 1)) {
+        ctx.reply("Неверное значение")
+        session[sev] = 0
+        return
+      }
       session[sev] = cmp
       ctx.reply("Введите ссылку")
     } else {
@@ -434,25 +522,34 @@ bot.on("message:text", async (ctx) => {
   const cmt = ctx.message.text
   const session = ctx.session
   //VK
-  nakrutka(351, (0.06 * priceX), "vk_likes", ctx)
-  nakrutka(154, (0.04 * priceX), "vk_viewers", ctx)
-  nakrutka(350, (0.09 * priceX), "vk_folowers", ctx)
-  nakrutka(352, (0.08 * priceX), "vk_repost", ctx)
+  nakrutka(351, 0.06 * priceX, "vk_likes", ctx)
+  nakrutka(154, 0.04 * priceX, "vk_viewers", ctx)
+  nakrutka(350, 0.09 * priceX, "vk_folowers", ctx)
+  nakrutka(352, 0.08 * priceX, "vk_repost", ctx)
   //TT
-  nakrutka(306, (0.06 * priceX), "tt_likes", ctx)
-  nakrutka(300, (0.01 * priceX), "tt_viewers", ctx)
-  nakrutka(305, (0.03 * priceX), "tt_folowers", ctx)
-  nakrutka(255, (0.5 * priceX), "tt_comments", ctx)
+  nakrutka(306, 0.06 * priceX, "tt_likes", ctx)
+  nakrutka(300, 0.01 * priceX, "tt_viewers", ctx)
+  nakrutka(305, 0.03 * priceX, "tt_folowers", ctx)
+  nakrutka(255, 0.5 * priceX, "tt_comments", ctx)
   //Ins
-  nakrutka(60, (0.01 * priceX), "ins_likes", ctx)
-  nakrutka(147, (0.01 * priceX), "ins_viewers", ctx)
-  nakrutka(3, (0.01 * priceX), "ins_folowers", ctx)
+  nakrutka(60, 0.01 * priceX, "ins_likes", ctx)
+  nakrutka(147, 0.01 * priceX, "ins_viewers", ctx)
+  nakrutka(3, 0.01 * priceX, "ins_folowers", ctx)
   //TG
-  nakrutka(2191, (0.01 * priceX), "tg_viewers", ctx)
-  nakrutka(400, (0.04 * priceX), "tg_folowers", ctx)
+  nakrutka(2191, 0.01 * priceX, "tg_viewers", ctx)
+  nakrutka(400, 0.04 * priceX, "tg_folowers", ctx)
+  if (session.coupon > 0) {
+    ctx.reply("Неверный Купон")
+    session.coupon = 0
+  }
   if (session.up_bal > 0) {
     if (Number(cmt)) {
       const cmp = Number(cmt)
+      if ((cmp > 500000) | (cmp < 0)) {
+        ctx.reply("Неверное значение")
+        session.up_bal = 0
+        return
+      }
       const coid = await balHisdb.countDocuments()
       const commentid = 183301 + coid
       await balHisdb.create({
@@ -496,16 +593,31 @@ bot.on("message:text", async (ctx) => {
     return
   }
   if (cmt === lang.my_wrap) {
-    if (!ctx.user.wrapHist[0].orderid) return ctx.reply("Заказов нет")
+    if (!ctx.user.wrapHist[0])
+      return ctx.reply("⚙️ В работе:\n\nНет активных заказов")
     const orderid = ctx.user.wrapHist[0].orderid
     const rq = await axios.request(
       `https://wiq.ru/api/?key=13a00ca1a6b4bd265abcbc00bb900414&action=status&order=${orderid}`
     )
     const urlParse = rq.data.link.split("/")[3]
     const statusParse =
-      rq.data.status == "Completed" ? "Завершено" : rq.data.status
+      rq.data.status == "Completed"
+        ? "Завершено"
+        : rq.data.status == "In progress"
+        ? "Активен✅"
+        : rq.data.status == "Pending"
+        ? "Обрабатывается🕝"
+        : rq.data.status == "Partial"
+        ? "Прерван❌"
+        : rq.data.status == "Canceled"
+        ? "Отменен"
+        : rq.data.status
+    if ((rq.data.status == "Completed") | (rq.data.status == "Canceled"))
+      return ctx.reply("⚙️ В работе:\n\nНет активных заказов")
     ctx.reply(
-      `Заказ №${orderid}\n ${rq.data.quantity}/${rq.data.remains}  <a href="${rq.data.link}">${urlParse}</a> ${statusParse}`,
+      `⚙️ В работе:\n Заказ №${orderid}\n Статус: ${statusParse}\n Выполнено: ${
+        rq.data.quantity - rq.data.remains
+      }/${rq.data.quantity}\n ${rq.data.link}`,
       { disable_web_page_preview: true, parse_mode: "HTML" }
     )
   }

@@ -18,6 +18,12 @@ const userSchem = new mongoose.Schema({
   refer: [
     {
       userid: { type: Number, default: 0 },
+      gainrur: {
+        type: Number,
+        default: 0,
+        get: (v) => Math.round(v * 100) / 100,
+        set: (v) => Math.round(v * 100) / 100,
+      },
     },
   ],
   wrapHist: [
