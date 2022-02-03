@@ -4,6 +4,7 @@ const timestamp = Date.now() + 10800000
 const userSchem = new mongoose.Schema({
   id: { type: Number, required: true, unique: true },
   userid: { type: Number, required: true, unique: true },
+  acclvl: { type: Number, default: 0 },
   username: { type: String },
   lang: { type: String },
   bal: {

@@ -50,12 +50,16 @@ const keyboard = new Keyboard()
   .row()
 
 const prof_menu = new InlineKeyboard()
-  .text(lang.pur_his, "in_dev")
-  .row()
-  .text(lang.up_bal, "up_bal")
+  .text(lang.pur_his, "pur_his")
   .text(lang.bal_his, "bal_his")
   .row()
   .text(lang.act_cup, "coupon")
+
+const ref_menu = new InlineKeyboard()
+  .text("Рефералы и История начислений", "refer_users")
+  .row()
+  .text("Получить ссылку отдельным сообщением", "refer_url")
+  .row()
 
 const shop_wrap = new InlineKeyboard()
   .text(lang.vk, "vk_nakrutka")
@@ -104,6 +108,8 @@ const ins_keyboard = new InlineKeyboard()
   .row()
   .text(lang.back, "wp_back")
 
+const cloze_ds = new InlineKeyboard().text(lang.close, "close")
+
 bot.command("start", async (ctx) => {
   if (ctx.message.chat.id < 0) return
   cmf = ctx.message.from
@@ -127,7 +133,7 @@ bot.command("start", async (ctx) => {
       reply_markup: keyboard,
     })
     await bot.api.sendMessage(
-      -463135822,
+      tea.ADMINGROUP,
       `👤 Зарегистрирован новый пользователь: <a href="tg://user?id=${
         cmf.id
       }">${cmf.username || "Без Имени"}</a>\n🕺 Реферал: ${ctx.match || "Нет"}`,
@@ -138,6 +144,241 @@ bot.command("start", async (ctx) => {
       reply_markup: keyboard,
     })
   }
+})
+
+bot.command("check", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    const cmtA =
+      +ctx.message?.text.split(" ")[1] ||
+      ctx.message?.text.split(" ")[1].replace("@", "")
+    if (ctx.user.acclvl < 7) return ctx.reply("Нет прав использовать команду")
+    const user = Number(cmtA)
+      ? await userdb.findOne({ userid: cmtA })
+      : await userdb.findOne({ username: cmtA })
+    if (!user) return ctx.reply("Пользователь не найден")
+    console.log(user)
+    const banCheck = user.acclvl < 0 ? "Да" : user.acclvl > 0 ? "Нет" : false
+    ctx.reply(
+      `🤵Имя пользователя: ${user.username}\n💸Баланс пользователя: ${user.bal}\n❌Бан аккаунта: ${banCheck}\n💰Покупок в боте: ${user.wrapHist.length}`
+    )
+  } catch (e) {
+    ctx.reply(`Ошибка: ${e}`)
+  }
+})
+
+bot.command("test", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    const cmtA = ctx.message?.text.slice(6)
+    if (ctx.user.acclvl < 7) return ctx.reply("Нет прав использовать команду")
+    const rq = await axios.request(
+      `https://wiq.ru/api/?key=${tea.WIQ_TOKEN}&action=services`
+    )
+    const rt = rq.data.filter(x => x.ID == 4)
+    ctx.reply(rt[0].description)
+  } catch (e) {
+    console.log(e)
+    ctx.reply(`Ошибка: ${e}`)
+  }
+})
+
+bot.command("order", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    const cmtA = +ctx.message?.text.slice(6)
+    if (ctx.user.acclvl < 7) return ctx.reply("Нет прав использовать команду")
+    const rq = await axios.request(
+      `https://wiq.ru/api/?key=${tea.WIQ_TOKEN}&action=status&order=${cmtA}`
+    )
+    const statusParse =
+      rq.data.status == "Completed"
+        ? "Завершено"
+        : rq.data.status == "In progress"
+        ? "Активен"
+        : rq.data.status == "Pending"
+        ? "Обрабатывается"
+        : rq.data.status == "Partial"
+        ? "Прерван"
+        : rq.data.status == "Canceled"
+        ? "Отменен"
+        : rq.data.status
+    ctx.reply(`Заказ №${cmtA}\nСтатус: ${statusParse}\nСсылка: ${rq.data.link}\nТип Заказа: ${rq.data.service}\nКол-во: ${rq.data.quantity}\nВыполнено: ${rq.data.charge}`, { disable_web_page_preview: true })
+  } catch (e) {
+    console.log(e)
+    ctx.reply(`Ошибка: ${e}`)
+  }
+})
+
+bot.command("sendall", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    const cmtA = ctx.message?.text.slice(9)
+    if (ctx.user.acclvl < 7) return ctx.reply("Нет прав использовать команду")
+    const user = await userdb.find({})
+    user.forEach((x, y, z) => {
+      bot.api.sendMessage(user[y].userid, cmtA)
+    })
+  } catch (e) {
+    ctx.reply(`Ошибка: ${e}`)
+  }
+})
+
+bot.command("stat", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    if (ctx.user.acclvl < 7) return ctx.reply("Нет прав использовать команду")
+    const user = await userdb.find({})
+    const balance = await balHisdb.find({})
+    const balComp = balance.filter((x) => x.status === "Complite")
+    balComp.balUp = 0
+    const balMonth = balComp.filter(
+      (x) => x.reqDate.getTime() > timestamp - 2592000000
+    )
+    balMonth.balUp = 0
+    let result = `Статистика:\n`
+    balComp.forEach((x, y, z) => {
+      balComp.balUp += balComp[y].balUp
+      balMonth.balUp += balMonth[y].balUp
+    })
+    result += `👥Пользователей в боте: ${user.length} \n🌆Пополнений за месяц: ${balMonth.balUp} ₽\n💰Общая сумма Пополнений: ${balComp.balUp} ₽`
+    ctx.reply(result)
+  } catch (e) {
+    ctx.reply(`Ошибка: ${e}`)
+  }
+})
+
+bot.command("give", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    const cmtA =
+      +ctx.message?.text.split(" ")[1] ||
+      ctx.message?.text.split(" ")[1].replace("@", "")
+    const cmtB = +ctx.message?.text.split(" ")[2]
+    if (!Number(cmtB) || ctx.user.acclvl < 7)
+      return ctx.reply("Нельзя использовать команду")
+    const user = Number(cmtA)
+      ? await userdb.findOne({ userid: cmtA })
+      : await userdb.findOne({ username: cmtA })
+    if (!user) return ctx.reply("Пользователь не найден")
+    ctx.reply(
+      `${
+        cmtB > 0
+          ? "Баланс пользователя пополнен на"
+          : "Баланс пользователя снижен на"
+      } ${cmtB} P`
+    )
+    bot.api.sendMessage(
+      user.userid,
+      `${
+        cmtB > 0
+          ? "💰Ваш баланс пополнен на"
+          : "⚜️Администратор снизил ваш баланс на"
+      } ${cmtB} P`
+    )
+    user.bal = user.bal + cmtB
+    await user.save()
+  } catch (e) {
+    ctx.reply(`Ошибка: ${e}`)
+  }
+})
+
+bot.command("setAccess", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    const cmtA =
+      +ctx.message?.text.split(" ")[1] ||
+      ctx.message?.text.split(" ")[1].replace("@", "")
+    const cmtB = +ctx.message?.text.split(" ")[2]
+    if (!Number.isInteger(cmtB) || ctx.user.acclvl < 7)
+      return ctx.reply("Нельзя использовать команду")
+    if (cmtB < -1 || cmtB > 7) return ctx.reply("Нельзя меньше -1 или больше 7")
+    const ParceAccesId =
+      cmtB == -1
+        ? "Заблокированный"
+        : cmtB == 0
+        ? "Пользователь"
+        : cmtB == 1
+        ? "Бронзовый"
+        : cmtB == 2
+        ? "Серебряный"
+        : cmtB == 3
+        ? "Золотой"
+        : cmtB == 4
+        ? "Для своих"
+        : cmtB == 5
+        ? "Резерв"
+        : cmtB == 6
+        ? "Резерв"
+        : cmtB == 7
+        ? "Создатель"
+        : "Any"
+    const user = Number(cmtA)
+      ? await userdb.findOne({ userid: cmtA })
+      : await userdb.findOne({ username: cmtA })
+    if (!user) return ctx.reply("Пользователь не найден")
+    ctx.reply(`Уровень доступа пользователя теперь ${ParceAccesId}`)
+    bot.api.sendMessage(
+      user.userid,
+      `Ваш уровень доступа теперь ${ParceAccesId}`
+    )
+    user.acclvl = cmtB
+    await user.save()
+  } catch (e) {
+    ctx.reply(`Ошибка: ${e}`)
+    return
+  }
+})
+
+bot.callbackQuery("refer_users", async (ctx) => {
+  const cmt = +ctx.update.callback_query.message.text.split("=")[1]
+  ctx.answerCallbackQuery({ text: "" })
+  let user = await userdb.find({ id: cmt })
+  let result = `Ваши рефералы:\n`
+  user.refer = user[0].refer
+  for (i = 0; i < user.refer.length; i++) {
+    result += `• ══─━━── ⫷⫸ ──══─━━ •\nПользователь: #${user.refer[i].userid}\nСумма: ${user.refer[i].gainrur} ₽\n`
+  }
+  result += `• ══─━━── ⫷⫸ ──══─━━ •`
+  ctx.editMessageText(result)
+})
+
+bot.callbackQuery("pur_his", async (ctx) => {
+  const cmt = ctx.from?.id
+  ctx.answerCallbackQuery({ text: "" })
+  const user = await userdb.findOne({ userid: cmt })
+  let result = `Ваши заказы:\n`
+  for (i = 0; i < user.wrapHist.length; i++) {
+    const orderid = user.wrapHist[i].orderid
+    const rq = await axios.request(
+      `https://wiq.ru/api/?key=${tea.WIQ_TOKEN}&action=status&order=${orderid}`
+    )
+    const urlParse = rq.data.link.split("/")[3]
+    const statusParse =
+      rq.data.status == "Completed"
+        ? "Завершено"
+        : rq.data.status == "In progress"
+        ? "Активен"
+        : rq.data.status == "Pending"
+        ? "Обрабатывается"
+        : rq.data.status == "Partial"
+        ? "Прерван"
+        : rq.data.status == "Canceled"
+        ? "Отменен"
+        : rq.data.status
+    result += `• ══─━━── ⫷⫸ ──══─━━ •\nИд: #${orderid}\nДата: ${user.wrapHist[
+      i
+    ].date.toLocaleString()}\nСтатус: ${statusParse}\nСсылка: <a href="${
+      rq.data.link
+    }">${urlParse}</a>\n`
+  }
+  result += `• ══─━━── ⫷⫸ ──══─━━ •`
+  ctx.editMessageText(result, {disable_web_page_preview: true, parse_mode: "HTML" })
+})
+
+bot.callbackQuery("refer_url", async (ctx) => {
+  const referUrl = ctx.update.callback_query.message.text.split(" ")[16]
+  ctx.editMessageText(`<code>${referUrl}</code>`, { parse_mode: "HTML" })
 })
 
 bot.callbackQuery("coupon", async (ctx) => {
@@ -185,12 +426,12 @@ async function checkPayments(ctx, trasid) {
     await trans.save()
     if (refer) {
       refer.bal = refer.bal + trans.balUp * 0.05
-      const refBal = refer.refer.filter(x => x.userid == user.id)[0]
+      const refBal = refer.refer.filter((x) => x.userid == user.id)[0]
       refBal.gainrur = refBal.gainrur + trans.balUp * 0.05
       await refer.save()
     }
     await bot.api.sendMessage(
-      -463135822,
+      tea.ADMINGROUP,
       `Пополнение №${commentID}\nСумма: ${trans.balUp} ₽\nСпособ пополнения: ${
         trans.type
       }\nВремя заказа: ${trans.reqDate.toLocaleString("ru-RU")}\nПокупатель: @${
@@ -240,15 +481,11 @@ bot.callbackQuery("check_paym_x", async (ctx) => {
 })
 
 bot.callbackQuery("in_dev", async (ctx) => {
-  const cmt = +ctx.update.callback_query.message.text
-    .split(" ")[2]
-    .match(/[0-9]/g)
-    .join("")
   ctx.answerCallbackQuery({ text: "В разработке" })
 })
 
 bot.callbackQuery("tg_nakrutka", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.replyWithPhoto(
     "https://media.discordapp.net/attachments/461187392074940417/935536232023326791/Telegram.jpg?width=847&height=281",
     {
@@ -260,18 +497,21 @@ bot.callbackQuery("tg_nakrutka", async (ctx) => {
 })
 
 bot.callbackQuery("tg_viewers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры Tg\n💰 Цена: ${
       0.01 * priceX
-    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 50 шт.\n Максимальное количество: 1000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`
+    } ₽ \n\nВведите количество товара, которое хотите купить: \n Минимальное количество: 50 шт.\n Максимальное количество: 1000000 шт.\n• ══─━━── ⫷⫸ ──══─━━ •`,
+    {
+      reply_markup: cloze_ds,
+    }
   )
   const session = ctx.session
   session.tg_viewers++
 })
 
 bot.callbackQuery("tg_folowers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики Tg\n💰 Цена: ${
       0.04 * priceX
@@ -282,7 +522,7 @@ bot.callbackQuery("tg_folowers", async (ctx) => {
 })
 
 bot.callbackQuery("ins_nakrutka", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.replyWithPhoto(
     "https://media.discordapp.net/attachments/461187392074940417/935536077035405312/instagram-wallpapercr.jpg?width=847&height=281",
     {
@@ -294,7 +534,7 @@ bot.callbackQuery("ins_nakrutka", async (ctx) => {
 })
 
 bot.callbackQuery("ins_likes", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки Inst\n💰 Цена: ${
       0.01 * priceX
@@ -305,7 +545,7 @@ bot.callbackQuery("ins_likes", async (ctx) => {
 })
 
 bot.callbackQuery("ins_viewers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры Inst\n💰 Цена: ${
       0.01 * priceX
@@ -316,7 +556,7 @@ bot.callbackQuery("ins_viewers", async (ctx) => {
 })
 
 bot.callbackQuery("ins_folowers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики Inst\n💰 Цена: ${
       0.01 * priceX
@@ -327,7 +567,7 @@ bot.callbackQuery("ins_folowers", async (ctx) => {
 })
 
 bot.callbackQuery("tt_nakrutka", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.replyWithPhoto(
     "https://media.discordapp.net/attachments/461187392074940417/935535429460041748/14843332_0.jpg?width=847&height=281",
     {
@@ -339,7 +579,7 @@ bot.callbackQuery("tt_nakrutka", async (ctx) => {
 })
 
 bot.callbackQuery("tt_likes", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки TT\n💰 Цена: ${
       0.06 * priceX
@@ -350,7 +590,7 @@ bot.callbackQuery("tt_likes", async (ctx) => {
 })
 
 bot.callbackQuery("tt_viewers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры TT\n💰 Цена: ${
       0.01 * priceX
@@ -361,7 +601,7 @@ bot.callbackQuery("tt_viewers", async (ctx) => {
 })
 
 bot.callbackQuery("tt_folowers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики TT\n💰 Цена: ${
       0.03 * priceX
@@ -372,7 +612,7 @@ bot.callbackQuery("tt_folowers", async (ctx) => {
 })
 
 bot.callbackQuery("tt_comments", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  💬 Комментарии TT\n💰 Цена: ${
       0.5 * priceX
@@ -383,7 +623,7 @@ bot.callbackQuery("tt_comments", async (ctx) => {
 })
 
 bot.callbackQuery("vk_nakrutka", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.replyWithPhoto(
     "https://cdn.discordapp.com/attachments/461187392074940417/935402968004579388/unknown.png",
     {
@@ -395,7 +635,7 @@ bot.callbackQuery("vk_nakrutka", async (ctx) => {
 })
 
 bot.callbackQuery("vk_likes", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  ❤️‍🔥Лайки VK\n💰 Цена: ${
       0.06 * priceX
@@ -406,7 +646,7 @@ bot.callbackQuery("vk_likes", async (ctx) => {
 })
 
 bot.callbackQuery("vk_viewers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👀Просмотры VK\n💰 Цена: ${
       0.04 * priceX
@@ -417,7 +657,7 @@ bot.callbackQuery("vk_viewers", async (ctx) => {
 })
 
 bot.callbackQuery("vk_folowers", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  👤Подписчики VK\n💰 Цена: ${
       0.09 * priceX
@@ -428,7 +668,7 @@ bot.callbackQuery("vk_folowers", async (ctx) => {
 })
 
 bot.callbackQuery("vk_repost", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply(
     `• ══─━━── ⫷⫸ ──══─━━ •\n📃 Категория:  🔃Репосты VK\n💰 Цена: ${
       0.08 * priceX
@@ -439,7 +679,7 @@ bot.callbackQuery("vk_repost", async (ctx) => {
 })
 
 bot.callbackQuery("wp_back", async (ctx) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch((e) => console.log(e))
   await ctx.reply("Активные категории в магазине:", { reply_markup: shop_wrap })
 })
 
@@ -460,6 +700,14 @@ const nakrutka = async (snum, price, sev, ctx) => {
       session[sev] = 0
       return
     }
+    console.log(
+      lang.vk_folow_url
+        .replace(/(?<=<).+(?=>)/gm, `$&`)
+        .replace("snum", snum)
+        .replace("squa", session[sev])
+        .replace("url", ctx.message.text)
+        .replaceAll(/<|>/g, "")
+    )
     const rq = await axios.request(
       lang.vk_folow_url
         .replace(/(?<=<).+(?=>)/gm, `$&`)
@@ -477,6 +725,13 @@ const nakrutka = async (snum, price, sev, ctx) => {
     ctx.user.wrapHist.unshift({ orderid: rq.data.order, date: timestamp })
     ctx.user.save()
     ctx.reply(`Заказ №${rq.data.order} запущен`)
+    bot.api.sendMessage(
+      tea.ADMINGROUP,
+      `Пользователь <a href="tg://user?id=${ctx.user.id}">${
+        ctx.user.username || "Без Имени"
+      }</a> запустил заказ №${rq.data.order} за ${session[sev] * price} ₽`,
+      { parse_mode: "HTML" }
+    )
     session[sev] = 0
     return
   }
@@ -498,6 +753,7 @@ const nakrutka = async (snum, price, sev, ctx) => {
     } else {
       ctx.reply("Неверная сумма")
       session[sev] = 0
+      return
     }
     return
   }
@@ -507,6 +763,7 @@ bot.on("message:text", async (ctx) => {
   cmf = ctx.message.from
   ctx.user = await userdb.findOne({ userid: cmf.id })
   if (!ctx.user) return ctx.reply("Необходимо еще раз нажать на команду /start")
+  if (ctx.user.acclvl === -1) return ctx.reply("Вы заблокированны")
   const options = { year: "numeric", month: "long", day: "numeric" }
   const conv = (str) => {
     const slon = str
@@ -541,6 +798,7 @@ bot.on("message:text", async (ctx) => {
   if (session.coupon > 0) {
     ctx.reply("Неверный Купон")
     session.coupon = 0
+    return
   }
   if (session.up_bal > 0) {
     if (Number(cmt)) {
@@ -597,7 +855,7 @@ bot.on("message:text", async (ctx) => {
       return ctx.reply("⚙️ В работе:\n\nНет активных заказов")
     const orderid = ctx.user.wrapHist[0].orderid
     const rq = await axios.request(
-      `https://wiq.ru/api/?key=13a00ca1a6b4bd265abcbc00bb900414&action=status&order=${orderid}`
+      `https://wiq.ru/api/?key=${tea.WIQ_TOKEN}&action=status&order=${orderid}`
     )
     const urlParse = rq.data.link.split("/")[3]
     const statusParse =
@@ -656,7 +914,7 @@ bot.on("message:text", async (ctx) => {
         .replace(/(?<=<).+(?=>)/gm, `$&`)
         .replaceAll("userid", ctx.user.id)
         .replaceAll(/<|>/g, ""),
-      { parse_mode: "MarkdownV2" }
+      { parse_mode: "MarkdownV2", reply_markup: ref_menu }
     )
   }
   if (cmt === lang.rul) {
@@ -669,6 +927,9 @@ bot.start()
 
 process.on("uncaughtException", function (err) {
   console.error(err)
+  bot.api.sendMessage(tea.ADMINGROUP, `В боте ошибка: <code>${err}</code>`, {
+    parse_mode: "HTML",
+  })
 })
 
 //DataBase
