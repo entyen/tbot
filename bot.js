@@ -11,7 +11,8 @@ const { userSchem, balHisSchem } = require("./schema/data.js")
 const userdb = mongoose.model("users", userSchem)
 const balHisdb = mongoose.model("balhis", balHisSchem)
 let lang = JSON.parse(fs.readFileSync(`./lang/ru.json`, "utf-8"))
-const timestamp = Date.now() + 10800000
+const timestamp = Date.now() + 3600000 * 3
+const timestamp_d = new Date(timestamp + 3600000)
 const priceX = 2
 
 function initial() {
@@ -175,8 +176,19 @@ bot.command("test", async (ctx) => {
     const rq = await axios.request(
       `https://wiq.ru/api/?key=${tea.WIQ_TOKEN}&action=services`
     )
-    const rt = rq.data.filter(x => x.ID == 4)
+    const rt = rq.data.filter((x) => x.ID == 4)
     ctx.reply(rt[0].description)
+  } catch (e) {
+    console.log(e)
+    ctx.reply(`Ошибка: ${e}`)
+  }
+})
+
+bot.command("help", async (ctx) => {
+  try {
+    ctx.user = await userdb.findOne({ userid: ctx.message?.from.id })
+    if (ctx.user.acclvl < 7) return ctx.reply("Нет прав использовать команду")
+    ctx.reply(lang.help)
   } catch (e) {
     console.log(e)
     ctx.reply(`Ошибка: ${e}`)
@@ -203,7 +215,10 @@ bot.command("order", async (ctx) => {
         : rq.data.status == "Canceled"
         ? "Отменен"
         : rq.data.status
-    ctx.reply(`Заказ №${cmtA}\nСтатус: ${statusParse}\nСсылка: ${rq.data.link}\nТип Заказа: ${rq.data.service}\nКол-во: ${rq.data.quantity}\nВыполнено: ${rq.data.charge}`, { disable_web_page_preview: true })
+    ctx.reply(
+      `Заказ №${cmtA}\nСтатус: ${statusParse}\nСсылка: ${rq.data.link}\nТип Заказа: ${rq.data.service}\nКол-во: ${rq.data.quantity}\nВыполнено: ${rq.data.charge}`,
+      { disable_web_page_preview: true }
+    )
   } catch (e) {
     console.log(e)
     ctx.reply(`Ошибка: ${e}`)
@@ -373,7 +388,10 @@ bot.callbackQuery("pur_his", async (ctx) => {
     }">${urlParse}</a>\n`
   }
   result += `• ══─━━── ⫷⫸ ──══─━━ •`
-  ctx.editMessageText(result, {disable_web_page_preview: true, parse_mode: "HTML" })
+  ctx.editMessageText(result, {
+    disable_web_page_preview: true,
+    parse_mode: "HTML",
+  })
 })
 
 bot.callbackQuery("refer_url", async (ctx) => {
@@ -834,15 +852,37 @@ bot.on("message:text", async (ctx) => {
         .text("✅ Проверить пополнение", "check_paym_v")
         .row()
         .text("❌ Отменить пополнение", "check_paym_x")
-      ctx.reply(
-        lang.up_bal_strings
-          .replace(/(?<=<).+(?=>)/gm, `$&`)
-          .replace("sum", cmr)
-          .replace("name", "13DEAD")
-          .replaceAll("transid", commentid)
-          .replaceAll(/<|>/g, ""),
-        { reply_markup: balUpKeyboard }
-      )
+      ctx
+        .reply(
+          lang.up_bal_strings
+            .replace(/(?<=<).+(?=>)/gm, `$&`)
+            .replace("sum", cmr)
+            .replace("name", "13DEAD")
+            .replace(
+              "dateph",
+              timestamp_d.toLocaleString("ru-RU", { timeZone: "UTC" })
+            )
+            .replaceAll("transid", commentid)
+            .replaceAll(/<|>/g, ""),
+          { reply_markup: balUpKeyboard }
+        )
+        .then((ctx) => {
+          setTimeout(async () => {
+            const cmt = +ctx.text.split(" ")[2].match(/[0-9]/g).join("")
+            let trans = await balHisdb.findOne({ bid: cmt })
+            trans.status = "Cancel"
+            trans.save()
+            bot.api
+              .editMessageText(
+                ctx.chat.id,
+                ctx.message_id,
+                `Отмена пополнения №${trans.bid}`
+              )
+              .catch((e) => {
+                return
+              })
+          }, 3600000)
+        })
       session.up_bal = 0
     } else {
       ctx.reply("Неверная сумма")
