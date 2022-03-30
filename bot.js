@@ -12,7 +12,6 @@ const userdb = mongoose.model("users", userSchem)
 const balHisdb = mongoose.model("balhis", balHisSchem)
 let lang = JSON.parse(fs.readFileSync(`./lang/ru.json`, "utf-8"))
 const timestamp = Date.now() + 3600000 * 3
-const timestamp_d = new Date(timestamp + 3600000)
 const priceX = 2
 
 function initial() {
@@ -55,6 +54,10 @@ const prof_menu = new InlineKeyboard()
   .text(lang.bal_his, "bal_his")
   .row()
   .text(lang.act_cup, "coupon")
+
+const paymentMethod = new InlineKeyboard().text("QIWI", "PMQIWI").row()
+// .text("MetaMask", "refer_url")
+// .row()
 
 const ref_menu = new InlineKeyboard()
   .text("Рефералы и История начислений", "refer_users")
@@ -246,17 +249,19 @@ bot.command("stat", async (ctx) => {
     const user = await userdb.find({})
     const balance = await balHisdb.find({})
     const balComp = balance.filter((x) => x.status === "Complite")
-    balComp.balUp = 0
+    let balUpComp = 0
     const balMonth = balComp.filter(
       (x) => x.reqDate.getTime() > timestamp - 2592000000
     )
-    balMonth.balUp = 0
+    let balUpMonth = 0
     let result = `Статистика:\n`
     balComp.forEach((x, y, z) => {
-      balComp.balUp += balComp[y].balUp
-      balMonth.balUp += balMonth[y].balUp
+      balUpComp += balComp[y].balUp
+      if (balMonth[y]) {
+        balUpMonth += balMonth[y].balUp
+      }
     })
-    result += `👥Пользователей в боте: ${user.length} \n🌆Пополнений за месяц: ${balMonth.balUp} ₽\n💰Общая сумма Пополнений: ${balComp.balUp} ₽`
+    result += `👥Пользователей в боте: ${user.length} \n🌆Пополнений за месяц: ${balUpMonth} ₽\n💰Общая сумма Пополнений: ${balUpComp} ₽`
     ctx.reply(result)
   } catch (e) {
     ctx.reply(`Ошибка: ${e}`)
@@ -343,6 +348,15 @@ bot.command("setAccess", async (ctx) => {
     ctx.reply(`Ошибка: ${e}`)
     return
   }
+})
+
+bot.callbackQuery("PMQIWI", async (ctx) => {
+  if(!ctx) return
+  ctx.answerCallbackQuery({ text: "" })
+  ctx.deleteMessage()
+  ctx.reply("Отправьте сумму пополнения")
+  const session = ctx.session
+  session.up_bal++
 })
 
 bot.callbackQuery("refer_users", async (ctx) => {
@@ -718,14 +732,6 @@ const nakrutka = async (snum, price, sev, ctx) => {
       session[sev] = 0
       return
     }
-    console.log(
-      lang.vk_folow_url
-        .replace(/(?<=<).+(?=>)/gm, `$&`)
-        .replace("snum", snum)
-        .replace("squa", session[sev])
-        .replace("url", ctx.message.text)
-        .replaceAll(/<|>/g, "")
-    )
     const rq = await axios.request(
       lang.vk_folow_url
         .replace(/(?<=<).+(?=>)/gm, `$&`)
@@ -852,6 +858,7 @@ bot.on("message:text", async (ctx) => {
         .text("✅ Проверить пополнение", "check_paym_v")
         .row()
         .text("❌ Отменить пополнение", "check_paym_x")
+      let timestamp_d = new Date(Date.now() + 3600000 * 4)
       ctx
         .reply(
           lang.up_bal_strings
@@ -870,6 +877,7 @@ bot.on("message:text", async (ctx) => {
           setTimeout(async () => {
             const cmt = +ctx.text.split(" ")[2].match(/[0-9]/g).join("")
             let trans = await balHisdb.findOne({ bid: cmt })
+            if (trans.status == "Complite") return
             trans.status = "Cancel"
             trans.save()
             bot.api
@@ -920,8 +928,7 @@ bot.on("message:text", async (ctx) => {
     )
   }
   if (cmt === lang.up_balk) {
-    ctx.reply("Отправьте сумму пополнения")
-    session.up_bal++
+    ctx.reply("Выберите метод пополнения", { reply_markup: paymentMethod })
   }
   if (cmt === lang.profile) {
     ctx.reply(conv(lang.prof_menu), { reply_markup: prof_menu })
